@@ -88,8 +88,8 @@ public class k8sUtil {
 
 
     //创建一个pod
-    public Object createPod() throws IOException, ApiException{
-        //https://github.com/kubernetes-client/java/issues/274 这个是我随便从网上找的还没改动，请明天进行修改
+    public Object createPod(String nameSpace, String podName) throws IOException, ApiException{
+
         if(client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
 
@@ -98,7 +98,7 @@ public class k8sUtil {
         pod.setKind("Pod");
 
         V1ObjectMeta metadata = new V1ObjectMeta();
-        metadata.setName("test-pod");
+        metadata.setName(podName);
         metadata.setLabels(new HashMap<>());
         metadata.getLabels().put("k8s-app", "someapp");
         pod.setMetadata(metadata);
@@ -110,8 +110,9 @@ public class k8sUtil {
         //设置cpu和内存
         container.setResources(new V1ResourceRequirements());
         container.getResources().setRequests(new HashMap<>());
-        container.getResources().getRequests().put("memory", new Quantity("64M"));
-        container.getResources().getRequests().put("cpu", new Quantity("250m"));
+        //如果过大会pending
+        container.getResources().getRequests().put("memory", new Quantity("66000M"));
+        container.getResources().getRequests().put("cpu", new Quantity("2500m"));
 
         container.setName("myudpserver-containers");
         container.setImage("myudpserver:v1");
@@ -133,12 +134,32 @@ public class k8sUtil {
         spec.getContainers().add(container);
         pod.setSpec(spec);
         try {
-            V1Pod v1pod = api.createNamespacedPod("default", pod, "true", null, null);
+            V1Pod v1pod = api.createNamespacedPod(nameSpace, pod, "true", null, null);
             System.out.println(v1pod);
         } catch (ApiException e) {
             e.printStackTrace();
         }
         return null;
+    }
+
+    /**
+     * 获得一个pod的状态，方便以后创建一个pod之后查询状态。当前仅当pod的状态为true的时候才能认为创建成功，否则pending认为是false
+     * @param podName
+     * @throws IOException
+     * @throws ApiException
+     */
+    public void getPodStatus(String podName) throws IOException, ApiException{
+        if(client == null) client = getApiClient();
+        CoreV1Api api = new CoreV1Api();
+        //通过label-selector来选择，这里对于不同的pod还可以上不同的标签
+        V1PodList list = api.listPodForAllNamespaces(null,null,null,"k8s-app="+podName,null,null,null,null,null);
+        for(V1Pod item : list.getItems()){
+            List<V1PodCondition> statusList = item.getStatus().getConditions();
+            //如果成功分配资源那么输出为true否则输出为false
+            if(statusList.size() > 0) {
+                System.out.println(item.getMetadata().getName() + ": = " + statusList.get(0).getStatus());
+            }
+        }
     }
 
     /*
@@ -158,10 +179,10 @@ public class k8sUtil {
     }*/
 
     //删除一个pod
-    public void deletePod() throws IOException, ApiException{
+    public void deletePod(String nameSpace, String podName) throws IOException, ApiException{
         if(client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
-        api.deleteNamespacedPod("test-pod", "default", "true", null, 1, null, null,null);
+        api.deleteNamespacedPod(podName, nameSpace, "true", null, 1, null, null,null);
     }
 
     public V1Deployment createDeployment(String nameSpace, String deployedName) throws ApiException, IOException {
