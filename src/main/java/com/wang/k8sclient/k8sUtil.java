@@ -1,5 +1,6 @@
 package com.wang.k8sclient;
 
+import com.google.gson.reflect.TypeToken;
 import io.kubernetes.client.custom.IntOrString;
 import io.kubernetes.client.custom.Quantity;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
@@ -11,6 +12,7 @@ import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.util.Config;
+import io.kubernetes.client.util.Watch;
 
 import java.io.IOException;
 import java.util.*;
@@ -32,27 +34,28 @@ public class k8sUtil {
         return client;
     }
 
-    public void getAllPodList() throws Exception{
+    public void getAllPodList() throws Exception {
 
-        if(client == null) client = getApiClient();
+        if (client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
-        V1PodList list = api.listPodForAllNamespaces(null,null,null,null,null,null,null,null,null);
-        for(V1Pod item : list.getItems()){
+        V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, null, null, null, null);
+        for (V1Pod item : list.getItems()) {
             System.out.println(item);
         }
     }
-    public void getNamespace() throws IOException, ApiException{
-        if(client == null) client = getApiClient();
+
+    public void getNamespace() throws IOException, ApiException {
+        if (client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
-        V1NamespaceList list = api.listNamespace(null,null,null,null,null,null,null,null,null);
-        for(V1Namespace l : list.getItems()){
+        V1NamespaceList list = api.listNamespace(null, null, null, null, null, null, null, null, null);
+        for (V1Namespace l : list.getItems()) {
             System.out.println(l);
         }
     }
 
     //这个现在还有问题
-    public Object createNamespace(String name) throws IOException, ApiException{
-        if(client == null) client = getApiClient();
+    public Object createNamespace(String name) throws IOException, ApiException {
+        if (client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
         AppsV1Api appsV1Api = new AppsV1Api();
         V1Namespace body = new V1Namespace();
@@ -78,7 +81,7 @@ public class k8sUtil {
         body.setSpec(spec);*/
         try {
             //appsV1Api.createNamespacedDeployment(name, body, true, null, null);
-            V1Namespace result =api.createNamespace(body,"true", null, null);
+            V1Namespace result = api.createNamespace(body, "true", null, null);
             System.out.println(result);
         } catch (ApiException e) {
             e.printStackTrace();
@@ -88,9 +91,9 @@ public class k8sUtil {
 
 
     //创建一个pod
-    public Object createPod(String nameSpace, String podName) throws IOException, ApiException{
+    public Object createPod(String nameSpace, String podName) throws IOException, ApiException {
 
-        if(client == null) client = getApiClient();
+        if (client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
 
         V1Pod pod = new V1Pod();
@@ -144,19 +147,20 @@ public class k8sUtil {
 
     /**
      * 获得一个pod的状态，方便以后创建一个pod之后查询状态。当前仅当pod的状态为true的时候才能认为创建成功，否则pending认为是false
+     *
      * @param podName
      * @throws IOException
      * @throws ApiException
      */
-    public void getPodStatus(String podName) throws IOException, ApiException{
-        if(client == null) client = getApiClient();
+    public void getPodStatus(String podName) throws IOException, ApiException {
+        if (client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
         //通过label-selector来选择，这里对于不同的pod还可以上不同的标签
-        V1PodList list = api.listPodForAllNamespaces(null,null,null,"k8s-app="+podName,null,null,null,null,null);
-        for(V1Pod item : list.getItems()){
+        V1PodList list = api.listPodForAllNamespaces(null, null, null, "k8s-app=" + podName, null, null, null, null, null);
+        for (V1Pod item : list.getItems()) {
             List<V1PodCondition> statusList = item.getStatus().getConditions();
             //如果成功分配资源那么输出为true否则输出为false
-            if(statusList.size() > 0) {
+            if (statusList.size() > 0) {
                 System.out.println(item.getMetadata().getName() + ": = " + statusList.get(0).getStatus());
             }
         }
@@ -179,14 +183,29 @@ public class k8sUtil {
     }*/
 
     //删除一个pod
-    public void deletePod(String nameSpace, String podName) throws IOException, ApiException{
-        if(client == null) client = getApiClient();
+    public void deletePod(String nameSpace, String podName) throws IOException, ApiException {
+        if (client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
-        api.deleteNamespacedPod(podName, nameSpace, "true", null, 1, null, null,null);
+        api.deleteNamespacedPod(podName, nameSpace, "true", null, 1, null, null, null);
     }
 
+    //watch这个接口有点问题的，因为k8s的api-server本身不支持client对其http长链接，所以很快就超时断掉了
+    //但是本身对pod的管理应该是以tcp链接的断开作为pod存活的依据，所以不用watch而是-1 == send()也可以。所以可能这个接口先不用了
+    public void watchPod() throws IOException, ApiException {
+        if (client == null) client = getApiClient();
+        CoreV1Api api = new CoreV1Api();
+
+        Watch<V1Pod> watch = Watch.createWatch(client, api.listNamespacedPodCall("default", "true", Boolean.TRUE, "true", null, null, 5, null, 1000, Boolean.TRUE, null),
+                new TypeToken<Watch.Response<V1Pod>>() {}.getType());
+        for(Watch.Response<V1Pod> item:watch){
+                System.out.printf("%s : %s%n", item.type, item.object.getMetadata().getName());
+        }
+        watch.close();
+    }
+
+
     public V1Deployment createDeployment(String nameSpace, String deployedName) throws ApiException, IOException {
-        if(client == null) client = getApiClient();
+        if (client == null) client = getApiClient();
         AppsV1Api api = new AppsV1Api();
 
         //set kind and api version
@@ -251,14 +270,14 @@ public class k8sUtil {
 
     }
 
-    public void deleteDeployment(String nameSpace, String deployedName) throws IOException, ApiException{
-        if(client == null) client = getApiClient();
+    public void deleteDeployment(String nameSpace, String deployedName) throws IOException, ApiException {
+        if (client == null) client = getApiClient();
         AppsV1Api api = new AppsV1Api();
         api.deleteNamespacedDeployment(deployedName, nameSpace, "true", null, 1, null, null, null);
     }
 
-    public V1Service createService(String nameSpace, String serviceName) throws IOException, ApiException{
-        if(client == null) client = getApiClient();
+    public V1Service createService(String nameSpace, String serviceName) throws IOException, ApiException {
+        if (client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
 
         V1Service v1Service = new V1Service();
@@ -289,17 +308,17 @@ public class k8sUtil {
         v1ServiceSpec.setType("NodePort");
         v1Service.setSpec(v1ServiceSpec);
 
-        try{
+        try {
             V1Service result = api.createNamespacedService(nameSpace, v1Service, "true", null, null);
             System.out.println(result);
-        }catch (ApiException e){
+        } catch (ApiException e) {
             e.printStackTrace();
         }
         return null;
     }
 
-    public void deleteService(String nameSpace, String serviceName) throws IOException, ApiException{
-        if(client == null) client = getApiClient();
+    public void deleteService(String nameSpace, String serviceName) throws IOException, ApiException {
+        if (client == null) client = getApiClient();
         CoreV1Api api = new CoreV1Api();
         api.deleteNamespacedService(serviceName, nameSpace, "true", null, 1, null, null, null);
     }

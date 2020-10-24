@@ -8,7 +8,8 @@ public class main {
         //k8sutil.createNamespace("testNamespace");
         //k8sutil.createPod("default", "test-resource-pod2");
         //k8sutil.deletePod("default", "test-resource-pod2");
-        k8sutil.getPodStatus("someapp");
+        //k8sutil.getPodStatus("someapp");
+        k8sutil.watchPod();
         //k8sutil.createDeployment("default", "testudpserver");
         //k8sutil.deleteDeployment("default", "testudpserver");
         //k8sutil.createService("default", "myudpserver");
